@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 1
+names: ['corners']
+
+roboflow:
+  workspace: tomers-workspace
+  project: chess_corners-rfsr8
+  version: 4
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/tomers-workspace/chess_corners-rfsr8/dataset/4
