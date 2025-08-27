@@ -2,12 +2,12 @@ train: ../train/images
 val: ../valid/images
 test: ../test/images
 
-nc: 1
-names: ['corners']
+nc: 3
+names: ['corners', 'eight', 'one']
 
 roboflow:
   workspace: tomers-workspace
-  project: chess_corners-rfsr8
+  project: chess-corners-and-numbers-6ckhj
   version: 4
   license: CC BY 4.0
-  url: https://universe.roboflow.com/tomers-workspace/chess_corners-rfsr8/dataset/4
+  url: https://universe.roboflow.com/tomers-workspace/chess-corners-and-numbers-6ckhj/dataset/4

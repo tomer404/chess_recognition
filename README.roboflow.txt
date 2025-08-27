@@ -1,8 +1,8 @@
 
-chess_corners - v4 2025-08-23 8:58am
+chess corners and numbers - v4 2025-08-24 3:44pm
 ==============================
 
-This dataset was exported via roboflow.com on August 23, 2025 at 6:19 AM GMT
+This dataset was exported via roboflow.com on August 24, 2025 at 12:45 PM GMT
 
 Roboflow is an end-to-end computer vision platform that helps you
 * collaborate with your team on computer vision projects
@@ -17,14 +17,14 @@ visit https://github.com/roboflow/notebooks
 
 To find over 100k other datasets and pre-trained models, visit https://universe.roboflow.com
 
-The dataset includes 245 images.
-Corners are annotated in YOLOv12 format.
+The dataset includes 247 images.
+Corners-and-numbers are annotated in YOLOv11 format.
 
 The following pre-processing was applied to each image:
 * Auto-orientation of pixel data (with EXIF-orientation stripping)
 
 The following augmentation was applied to create 3 versions of each source image:
 * 50% probability of horizontal flip
-* Random brigthness adjustment of between -10 and +10 percent
+* Random brigthness adjustment of between -15 and +15 percent
 
 
