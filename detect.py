@@ -74,8 +74,6 @@ def order_corners(corners, ones, eights):
     if(len(corners)>=4):
         corners = corners[:4]
         corners = order_corners_clockwise(corners)
-        print(f"eights length is: {len(eights)}")
-        print(f"len ones is {len(ones)}")
         if(len(eights) == 2):
             tl_ind = closest_corner(corners, eights[0])
             tr_ind = closest_corner(corners, eights[1])
@@ -98,6 +96,7 @@ def order_corners(corners, ones, eights):
             corners = corners[first:4] + corners[:first]
             return np.array(corners, dtype=np.float32).reshape(4, 2)
         return np.array(corners, dtype = np.float32).reshape(4, 2)
+    return None
 
 
 
@@ -157,8 +156,8 @@ def detect_and_crop():
     cv2.destroyAllWindows()
 
 
-def test():
-    path_to_img = create_file_path(1, 1)
+def test(image_num, folder_num):
+    path_to_img = create_file_path(image_num, folder_num)
     corners, ones, eights = detect_corners_and_orientation(path_to_img)
     corners = order_corners(corners, ones, eights)
     img = draw_results(path_to_img, corners, ones, eights)
@@ -170,4 +169,16 @@ def test():
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-detect_and_crop()
+def save_cropped_files(folder_num):
+    os.makedirs("warped imgs", exist_ok = True)
+    for i in range(103):
+        path_to_img = create_file_path(i, folder_num)
+        corners, ones, eights = detect_corners_and_orientation(path_to_img)
+        if len(corners)>=4:
+            warped = warp_quad(path_to_img, corners, ones, eights)
+            save_dir = os.path.join("warped imgs", str(folder_num))
+            os.makedirs(save_dir, exist_ok = True)
+            saved_img_path = os.path.join(save_dir, f"{i}.png")
+            cv2.imwrite(saved_img_path, warped)
+            
+save_cropped_files(0)
