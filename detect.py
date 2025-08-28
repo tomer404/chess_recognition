@@ -3,7 +3,7 @@ import cv2
 import os
 import numpy as np
 import math
-model = YOLO(r"runs/detect/train5/weights/best.pt")
+model = YOLO(r"runs\detect\train\weights\best.pt")
 def create_file_path(img_num, folder_num):
     if img_num<10:
         str_i = "00"+str(img_num)
@@ -30,7 +30,7 @@ def mid_point_of_boxes(coords):
 
 
 def detect_corners_and_orientation(path_to_img):
-    results = model.predict(source=path_to_img, conf=0.36)
+    results = model.predict(source=path_to_img, conf=0.2, iou = 0.0, agnostic_nms = False)
     r = results[0]
     boxes = r.boxes
     class_ids = boxes.cls.cpu().numpy()
@@ -87,11 +87,14 @@ def order_corners(corners, ones, eights):
         elif(len(ones) == 2):
             wh_0 = closest_corner(corners, ones[0])
             wh_1 = closest_corner(corners, ones[1])
-            tr_ind, tl_ind = list({0, 1, 2, 3}-{wh_0, wh_1})
-            if {tl_ind, tr_ind} == {0, 3}:
-                first = 3
+            if wh_0!=wh_1:
+                tr_ind, tl_ind = list({0, 1, 2, 3}-{wh_0, wh_1})
+                if {tl_ind, tr_ind} == {0, 3}:
+                    first = 3
+                else:
+                    first = min(tl_ind, tr_ind)
             else:
-                first = min(tl_ind, tr_ind)
+                first = wh_0
             # Cyclic shifting the sorted array so that first is in the beginning
             corners = corners[first:4] + corners[:first]
             return np.array(corners, dtype=np.float32).reshape(4, 2)
@@ -143,8 +146,8 @@ def draw_results(path_to_img, corners, ones, eights):
     return img
 
 
-def detect_and_crop():
-    path_to_img = create_file_path(15, 1)
+def detect_and_crop(image_num, folder_num):
+    path_to_img = create_file_path(image_num, folder_num)
     corners, ones, eights = detect_corners_and_orientation(path_to_img)
     warped = warp_quad(path_to_img, corners, ones, eights)
     cv2.namedWindow("Board", cv2.WINDOW_NORMAL)  # or: cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO
@@ -156,7 +159,7 @@ def detect_and_crop():
     cv2.destroyAllWindows()
 
 
-def test(image_num, folder_num):
+def draw_results(image_num, folder_num):
     path_to_img = create_file_path(image_num, folder_num)
     corners, ones, eights = detect_corners_and_orientation(path_to_img)
     corners = order_corners(corners, ones, eights)
@@ -171,7 +174,7 @@ def test(image_num, folder_num):
 
 def save_cropped_files(folder_num):
     os.makedirs("warped imgs", exist_ok = True)
-    for i in range(103):
+    for i in range(126):
         path_to_img = create_file_path(i, folder_num)
         corners, ones, eights = detect_corners_and_orientation(path_to_img)
         if len(corners)>=4:
@@ -181,4 +184,4 @@ def save_cropped_files(folder_num):
             saved_img_path = os.path.join(save_dir, f"{i}.png")
             cv2.imwrite(saved_img_path, warped)
             
-save_cropped_files(0)
+detect_and_crop(0, 0)
