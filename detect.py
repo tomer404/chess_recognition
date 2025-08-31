@@ -3,6 +3,7 @@ import cv2
 import os
 import numpy as np
 import math
+import torch
 model = YOLO(r"runs\detect\train\weights\best.pt")
 def create_file_path(img_num, folder_num):
     if img_num<10:
@@ -30,15 +31,25 @@ def mid_point_of_boxes(coords):
 
 
 def detect_corners_and_orientation(path_to_img):
-    results = model.predict(source=path_to_img, conf=0.2, iou = 0.0, agnostic_nms = False)
+    results = model.predict(source=path_to_img, conf = 0, iou = 0.0, agnostic_nms = False)
     r = results[0]
     boxes = r.boxes
-    class_ids = boxes.cls.cpu().numpy()
-    coords = boxes.xyxy.cpu().numpy()
+    # Sorting the values of the boxes by confidence using torch
+    conf_vals = boxes.conf.view(-1)
+    order = torch.argsort(conf_vals, descending = True)
+    boxes_sorted = boxes[order]
+    class_ids = boxes_sorted.cls.cpu().numpy()
+    coords = boxes_sorted.xyxy.cpu().numpy()
     # get the boxes coordinates of the corners, the 1s and the 8s rows
     corners_coords = coords[class_ids == 0]
     eights_coords = coords[class_ids == 1]
     ones_coords = coords[class_ids == 2]
+    if len(corners_coords) >= 4:
+        corners_coords = corners_coords[:4]
+    if len(eights_coords) >= 2:
+        eights_coords = eights_coords[:2]
+    if len(ones_coords) >= 2:
+        ones_coords = ones_coords[:2]
     # get the coordinates of the middle point of the boxes
     corners_coords = mid_point_of_boxes(corners_coords)
     ones_coords = mid_point_of_boxes(ones_coords)
@@ -71,8 +82,7 @@ def order_corners_clockwise(corners):
 
 def order_corners(corners, ones, eights):
     # This method fixes the top row to be the 8th row
-    if(len(corners)>=4):
-        corners = corners[:4]
+    if(len(corners) == 4):
         corners = order_corners_clockwise(corners)
         if(len(eights) == 2):
             tl_ind = closest_corner(corners, eights[0])
@@ -184,4 +194,4 @@ def save_cropped_files(folder_num):
             saved_img_path = os.path.join(save_dir, f"{i}.png")
             cv2.imwrite(saved_img_path, warped)
             
-detect_and_crop(0, 0)
+save_cropped_files(1)
