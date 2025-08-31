@@ -182,16 +182,16 @@ def draw_results(image_num, folder_num):
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-def save_cropped_files(folder_num):
-    os.makedirs("warped imgs", exist_ok = True)
+def save_cropped_files(folder_num, folder_name):
+    os.makedirs(folder_name, exist_ok = True)
     for i in range(126):
         path_to_img = create_file_path(i, folder_num)
         corners, ones, eights = detect_corners_and_orientation(path_to_img)
         if len(corners)>=4:
             warped = warp_quad(path_to_img, corners, ones, eights)
-            save_dir = os.path.join("warped imgs", str(folder_num))
+            save_dir = os.path.join(folder_name, str(folder_num))
             os.makedirs(save_dir, exist_ok = True)
             saved_img_path = os.path.join(save_dir, f"{i}.png")
             cv2.imwrite(saved_img_path, warped)
             
-save_cropped_files(1)
+save_cropped_files(0, "warped imgs")
