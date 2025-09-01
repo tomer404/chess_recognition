@@ -4,7 +4,7 @@ import os
 import numpy as np
 import math
 import torch
-model = YOLO(r"runs\detect\train\weights\best.pt")
+model = YOLO(r"runs/detect/train/weights/best.pt")
 def create_file_path(img_num, folder_num):
     if img_num<10:
         str_i = "00"+str(img_num)
@@ -18,7 +18,7 @@ def create_file_path(img_num, folder_num):
         folder_str = "0"+str(folder_num)
     else:
         folder_str = str(folder_num)
-    img_name = r"images\\"+str(folder_num)+"\G"+folder_str+"_IMG"+str_i+".jpg"
+    img_name = r"images/"+str(folder_num)+"/G"+folder_str+"_IMG"+str_i+".jpg"
     return img_name
 
 
@@ -113,7 +113,7 @@ def order_corners(corners, ones, eights):
 
 
 
-def warp_quad(path_to_img, quad_pts, ones, eights, scale=1.0, margin_ratio=0):
+def warp_quad(path_to_img, quad_pts, ones, eights, scale=1.0, margin_ratio=0, margin=0):
     """
     Perspective-warp the quad to a top-down rectangle.
     Output size inferred from the quad side lengths, with optional margin.
@@ -133,10 +133,10 @@ def warp_quad(path_to_img, quad_pts, ones, eights, scale=1.0, margin_ratio=0):
     maxH = max(maxH, 10)
     
     dst = np.array([
-        [0, 0],
-        [maxW - 1, 0],
-        [maxW - 1, maxH - 1],
-        [0, maxH - 1]
+        [margin, margin],
+        [maxW - margin - 1, margin],
+        [maxW - margin - 1, maxH - margin - 1],
+        [margin, maxH - margin - 1]
     ], dtype=np.float32)
 
     img_bgr = cv2.imread(path_to_img)
@@ -159,7 +159,7 @@ def draw_results(path_to_img, corners, ones, eights):
 def detect_and_crop(image_num, folder_num):
     path_to_img = create_file_path(image_num, folder_num)
     corners, ones, eights = detect_corners_and_orientation(path_to_img)
-    warped = warp_quad(path_to_img, corners, ones, eights)
+    warped = warp_quad(path_to_img, corners, ones, eights, margin=150)
     cv2.namedWindow("Board", cv2.WINDOW_NORMAL)  # or: cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO
     cv2.imshow("Board", warped)
 
@@ -188,7 +188,7 @@ def save_cropped_files(folder_num, folder_name):
         path_to_img = create_file_path(i, folder_num)
         corners, ones, eights = detect_corners_and_orientation(path_to_img)
         if len(corners)>=4:
-            warped = warp_quad(path_to_img, corners, ones, eights)
+            warped = warp_quad(path_to_img, corners, ones, eights, margin=150)
             save_dir = os.path.join(folder_name, str(folder_num))
             os.makedirs(save_dir, exist_ok = True)
             saved_img_path = os.path.join(save_dir, f"{i}.png")
