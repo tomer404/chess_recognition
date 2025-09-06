@@ -4,8 +4,9 @@ import os
 import numpy as np
 import math
 import torch
+from collections import defaultdict
 model = YOLO(r"runs/detect/train5/weights/best.pt")
-pieces_model = YOLO(r"runs2/detect/train/weights/best.pt")
+pieces_model = YOLO(r"runs2/detect/train2/weights/best.pt")
 def create_file_path(img_num, folder_num):
     if img_num<10:
         str_i = "00"+str(img_num)
@@ -60,53 +61,6 @@ def detect_corners_and_orientation(path_to_img):
     ones_coords = mid_point_of_boxes(ones_coords)
     eights_coords = mid_point_of_boxes(eights_coords)
     return [corners_coords, ones_coords, eights_coords]
-
-
-def recognize_pieces(img):
-    results = pieces_model.detect(source = img, conf = 0.1, iou = 0.5, agnostic_nm = False)
-    r = results[0]
-    boxes = r.boxes
-    class_ids = boxes.cls.cpu().numpy()
-    coords = boxes.coords.cpu().numpy()
-    coords_split_cls = [coords[class_ids == i] for i in range(12)]
-    return coords_split_cls
-
-
-def get_original_point(point, original_shape, corner_y, corner_x, cropped_shape):
-    '''get the coordinates of the point in the original image, before cropping and streching'''
-    h, w = original_shape[:2]
-    cropped_h, cropped_w = cropped_shape[:2]
-    size = max(cropped_h, cropped_w)
-    y, x = point
-    if(size == cropped_h):
-        x = int(cropped_w/size*x)
-    else:
-        y = int(cropped_h/size*y)
-    y, x = y + corner_y, x + corner_x
-    return x, y
-
-def get_point_in_board(point, shape, corners):
-    h, w = shape[:2]
-    src = np.float32([0, 0], [h, 0], [h, w], [w, 0])
-    (tl, tr, br, bl) = corners
-
-    widthA = np.linalg.norm(br - bl)
-    widthB = np.linalg.norm(tr - tl)
-    heightA = np.linalg.norm(tr - br)
-    heightB = np.linalg.norm(tl - bl)
-
-    maxW = int(math.ceil(max(widthA, widthB)))
-    maxH = int(math.ceil(max(heightA, heightB)))
-    maxW = max(maxW, 10)
-    maxH = max(maxH, 10)
-    dst = np.array([
-        [0, 0],
-        [maxW - 1, 0],
-        [maxW - 1, maxH - 1],
-        [0, maxH - 1]
-    ], dtype=np.float32)
-def get_square_of_piece(coords, img, corners, margin):
-    pass
 
 
 def distance(pt1, pt2):
@@ -164,57 +118,140 @@ def order_corners(corners, ones, eights):
     return None
 
 
+def detect_pieces(img):
+    results = pieces_model.predict(source = img, conf = 0.3, iou = 0.5, agnostic_nms = False)
+    r = results[0]
+    boxes = r.boxes
+    class_ids = boxes.cls.cpu().numpy()
+    conf = boxes.conf.cpu().numpy()
+    coords = boxes.xyxy.cpu().numpy()
+    coords_split_cls = [coords[class_ids == i] for i in range(12)]
+    conf_split_cls = [conf[class_ids == i] for i in range(12)]
+    return coords_split_cls, conf_split_cls
 
-def warp_quad(path_to_img, quad_pts, ones, eights, scale=1.0, margin_ratio=0, margin=0):
-    """
-    Perspective-warp the quad to a top-down rectangle.
-    Output size inferred from the quad side lengths, with optional margin.
-    Returns warped
-    """
-    ordered = order_corners(quad_pts, ones, eights)
-    (tl, tr, br, bl) = ordered
+
+def get_origin_point(point, original_shape, bl_y, bl_x, cropped_shape):
+    '''get the coordinates of the point in the original image, before cropping and streching'''
+    h, w = original_shape[:2]
+    cropped_h, cropped_w = cropped_shape[:2]
+    size = max(cropped_h, cropped_w)
+    y, x = point
+    if(size == cropped_h):
+        x = int(cropped_w/size*x)
+    else:
+        y = int(cropped_h/size*y)
+    y, x = y + bl_y, x + bl_x
+    return x, y
+
+
+def get_dst_size(corners):
+    (tl, tr, br, bl) = corners
 
     widthA = np.linalg.norm(br - bl)
     widthB = np.linalg.norm(tr - tl)
     heightA = np.linalg.norm(tr - br)
     heightB = np.linalg.norm(tl - bl)
 
-    maxW = int(math.ceil(max(widthA, widthB) * scale * (1.0 + margin_ratio)))
-    maxH = int(math.ceil(max(heightA, heightB) * scale * (1.0 + margin_ratio)))
+    maxW = int(math.ceil(max(widthA, widthB)))
+    maxH = int(math.ceil(max(heightA, heightB)))
     maxW = max(maxW, 10)
     maxH = max(maxH, 10)
-    
+    return maxW, maxH
+
+
+def get_point_in_board(point, shape, corners):
+    h, w = shape[:2]
+    maxW, maxH = get_dst_size(corners)
     dst = np.array([
-        [margin, margin],
-        [maxW - margin - 1, margin],
-        [maxW - margin - 1, maxH - margin - 1],
-        [margin, maxH - margin - 1]
+        [0, 0],
+        [maxW - 1, 0],
+        [maxW - 1, maxH - 1],
+        [0, maxH - 1]
     ], dtype=np.float32)
+    M = cv2.getPerspectiveTransform(corners, dst)
+    pt_src = np.array([[[point[0], point[1]]]], dtype=np.float32)
+    warped_point = cv2.perspectiveTransform(pt_src, M)
+    return warped_point[0, 0]
 
-    img_bgr = cv2.imread(path_to_img)
-    M = cv2.getPerspectiveTransform(ordered, dst)
-    warped = cv2.warpPerspective(img_bgr, M, (maxW, maxH))
-    h, w = warped.shape[:2]
-    size = max(h, w)
-    square_img = cv2.resize(warped, (size, size))
-    return square_img
 
+def check_if_inside(y, x, h, w):
+    return not (x > w or x < 0 or y > h or y < 0)
+
+
+def get_square_of_piece(coords, shape, corners, bl_y, bl_x, cropped_shape):
+    x1, y1, x2, y2 = coords
+    base_midpoint = [y2, (x1+x2) // 2]
+    origin_point = get_origin_point(base_midpoint, shape, bl_y, bl_x, cropped_shape)
+    warped_point = get_point_in_board(origin_point, shape, corners)
+    maxW, maxH = get_dst_size(corners)
+    x, y = warped_point
+    if check_if_inside(y, x, maxH-1, maxW-1):
+        x_ind, y_ind = int(8*x/(maxW-1)), int(8*y/(maxH-1))
+        return x_ind, y_ind
+    else:
+        return None
+    
 
 def crop_rectangle(path_to_img, quad_pts, margin = 0):
     '''This method crops a bounding rectangle of the board'''
-    min_x = min(quad_pts[0][0], quad_pts[1][0], quad_pts[2][0], quad_pts[3][0]) - margin
-    max_x = max(quad_pts[0][0], quad_pts[1][0], quad_pts[2][0], quad_pts[3][0]) + margin
-    min_y = min(quad_pts[0][1], quad_pts[1][1], quad_pts[2][1], quad_pts[3][1]) - margin
-    max_y = max(quad_pts[0][1], quad_pts[1][1], quad_pts[2][1], quad_pts[3][1]) + margin
+    min_x = int(min(quad_pts[0][0], quad_pts[1][0], quad_pts[2][0], quad_pts[3][0]) - margin)
+    max_x = int(max(quad_pts[0][0], quad_pts[1][0], quad_pts[2][0], quad_pts[3][0]) + margin)
+    min_y = int(min(quad_pts[0][1], quad_pts[1][1], quad_pts[2][1], quad_pts[3][1]) - margin)
+    max_y = int(max(quad_pts[0][1], quad_pts[1][1], quad_pts[2][1], quad_pts[3][1]) + margin)
     img = cv2.imread(path_to_img)
     cropped_img = img[min_y:max_y, min_x:max_x]
     h, w = cropped_img.shape[:2]
     size = max(h, w)
     square_img = cv2.resize(cropped_img, (size, size))
-    return square_img
+    return square_img, (min_y, min_x), cropped_img.shape
     
 
-def draw_results(path_to_img, corners, ones, eights):
+def main(path_to_img):
+    corners, ones, eights = detect_corners_and_orientation(path_to_img)
+    corners = order_corners(corners, ones, eights)
+    img = cv2.imread(path_to_img)
+    cropped_img, (bl_y, bl_x), cropped_shape = crop_rectangle(path_to_img, corners, margin=140)
+    pieces_coords, pieces_conf = detect_pieces(cropped_img)
+    cls_to_piece_type = {0: "black bishop", 1: "black king", 2: "black knight", 3: "black pawn", 4: "black queen", 5: "black rook",
+                     6: "white bishop", 7: "white king", 8: "white knight", 9: "white pawn", 10: "white queen", 11: "white rook"}
+    num_to_file = {0:"a", 1:"b", 2:"c", 3: "d", 4: "e", 5: "f", 6: "g",7: "h"}
+    square_to_piece = defaultdict(list) # multi values dictionary
+    square_to_piece_final = {}
+    for i in range(12):
+        for j in range(len(pieces_coords[i])):
+            piece_coord = pieces_coords[i][j]
+            square = get_square_of_piece(piece_coord, img.shape, corners, bl_y, bl_x, cropped_shape)
+            if square is not None:  
+                square_to_piece[square].append((i,j))
+    # handling collisions - if there are multiple pieces detected on the same square,
+    # we're taking only the one with the highest confidence value
+    for square in square_to_piece:
+        max_conf = 0
+        for piece in square_to_piece[square]:
+            current_conf = pieces_conf[piece[0]][piece[1]]
+            if current_conf > max_conf:
+                max_conf = current_conf
+                piece_with_max_conf = piece
+        square_to_piece_final[square] = piece_with_max_conf
+    for square, piece in square_to_piece_final.items():
+        piece_type = cls_to_piece_type[piece[0]]
+        print(f"{piece_type} on {num_to_file[square[0]]}{8-square[1]}")
+        
+
+
+def detect_and_crop(path_to_img):
+    corners, ones, eights = detect_corners_and_orientation(path_to_img)
+    warped = warp_quad(path_to_img, corners, ones, eights)
+    cv2.namedWindow("Board", cv2.WINDOW_NORMAL)  # or: cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO
+    cv2.imshow("Board", warped)
+
+    cv2.resizeWindow("Board", 800, 800)
+
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+
+def draw_corners(path_to_img, corners, ones, eights):
     img = cv2.imread(path_to_img)
     for i in range(4):
         cv2.putText(img, str(i), (int(corners[i][0]), int(corners[i][1])), 
@@ -226,11 +263,73 @@ def draw_results(path_to_img, corners, ones, eights):
     return img
 
 
-def detect_and_crop(image_num, folder_num):
-    path_to_img = create_file_path(image_num, folder_num)
+def draw_corners_from_path(path_to_img):
     corners, ones, eights = detect_corners_and_orientation(path_to_img)
-    warped = warp_quad(path_to_img, corners, ones, eights, margin=210)
-    cv2.namedWindow("Board", cv2.WINDOW_NORMAL)  # or: cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO
+    corners = order_corners(corners, ones, eights)
+    img = draw_corners(path_to_img, corners, ones, eights)
+    cv2.namedWindow("Board", cv2.WINDOW_NORMAL)  
+    cv2.imshow("Board", img)
+
+    cv2.resizeWindow("Board", 800, 800)
+
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+
+def draw_pieces_boxes(path_to_img):
+    corners, ones, eights = detect_corners_and_orientation(path_to_img)
+    corners = order_corners(corners, ones, eights)
+    img, (bl_y, bl_x), cropped_shape = crop_rectangle(path_to_img, corners)
+    pieces_coords = detect_pieces(img)
+    for i in range(12):
+        for piece_coord in pieces_coords[i]:
+            x1, y1, x2, y2 = piece_coord
+            cv2.rectangle(img=img, pt1=(int(x1), int(y2)), pt2=(int(x2), int(y1)), color = (255, 0, 0), thickness=-1)
+    cv2.namedWindow("Board", cv2.WINDOW_NORMAL)  
+    cv2.imshow("Board", img)
+
+    cv2.resizeWindow("Board", 800, 800)
+
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+
+def draw_origin_point(path_to_img):
+    img = cv2.imread(path_to_img)
+    corners, ones, eights = detect_corners_and_orientation(path_to_img)
+    corners = order_corners(corners, ones, eights)
+    cropped_img, (bl_y, bl_x), cropped_shape = crop_rectangle(path_to_img, corners)
+    pieces_coords = detect_pieces(cropped_img)
+    for i in range(12):
+        for piece_coord in pieces_coords[i]:
+            x1, y1, x2, y2 = piece_coord
+            base_midpoint = [y2, (x1+x2) // 2]
+            origin_point = get_origin_point(base_midpoint, img.shape, bl_y, bl_x, cropped_shape)
+            cv2.circle(img=img, center= (int(origin_point[0]), int(origin_point[1])), radius = 15, color = (255, 0, 0), thickness=-1)
+    cv2.namedWindow("Board", cv2.WINDOW_NORMAL)  
+    cv2.imshow("Board", img)
+
+    cv2.resizeWindow("Board", 800, 800)
+
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+
+def draw_warped_point(path_to_img):
+    img = cv2.imread(path_to_img)
+    corners, ones, eights = detect_corners_and_orientation(path_to_img)
+    corners = order_corners(corners, ones, eights)
+    cropped_img, (bl_y, bl_x), cropped_shape = crop_rectangle(path_to_img, corners)
+    pieces_coords = detect_pieces(cropped_img)
+    warped = warp_quad(path_to_img, corners, ones, eights)
+    for i in range(12):
+        for piece_coord in pieces_coords[i]:
+            x1, y1, x2, y2 = piece_coord
+            base_midpoint = [y2, (x1+x2) // 2]
+            origin_point = get_origin_point(base_midpoint, img.shape, bl_y, bl_x, cropped_shape)
+            warped_point = get_point_in_board(origin_point, img.shape, corners)
+            cv2.circle(img=warped, center= (int(warped_point[0]), int(warped_point[1])), radius = 15, color = (255, 0, 0), thickness=-1)
+    cv2.namedWindow("Board", cv2.WINDOW_NORMAL)  
     cv2.imshow("Board", warped)
 
     cv2.resizeWindow("Board", 800, 800)
@@ -238,19 +337,6 @@ def detect_and_crop(image_num, folder_num):
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-
-def draw_results(image_num, folder_num):
-    path_to_img = create_file_path(image_num, folder_num)
-    corners, ones, eights = detect_corners_and_orientation(path_to_img)
-    corners = order_corners(corners, ones, eights)
-    img = draw_results(path_to_img, corners, ones, eights)
-    cv2.namedWindow("Board", cv2.WINDOW_NORMAL)  # or: cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO
-    cv2.imshow("Board", img)
-
-    cv2.resizeWindow("Board", 800, 800)
-
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
 
 def save_warped_files(folder_num, folder_name):
     os.makedirs(folder_name, exist_ok = True)
@@ -275,11 +361,47 @@ def save_cropped_files(folder_num, folder_name):
         path_to_img = create_file_path(i, folder_num)
         corners, ones, eights = detect_corners_and_orientation(path_to_img)
         if len(corners)>=4:
-            cropped = crop_rectangle(path_to_img, corners, margin = 120)
+            cropped, (min_y, min_x), cropped_shape = crop_rectangle(path_to_img, corners, margin = 140)
             save_dir = os.path.join(folder_name, str(folder_num))
             os.makedirs(save_dir, exist_ok = True)
             saved_img_path = os.path.join(save_dir, f"{i}.png")
             cv2.imwrite(saved_img_path, cropped)
+        
 
+def warp_quad(path_to_img, quad_pts, ones, eights, scale=1.0, margin_ratio=0, margin=0):
+    """
+    Perspective-warp the quad to a top-down rectangle.
+    Output size inferred from the quad side lengths, with optional margin.
+    Returns warped
+    """
+    #ordered = order_corners(quad_pts, ones, eights)
+    (tl, tr, br, bl) = quad_pts
 
-save_cropped_files(0, "cropped imgs")
+    widthA = np.linalg.norm(br - bl)
+    widthB = np.linalg.norm(tr - tl)
+    heightA = np.linalg.norm(tr - br)
+    heightB = np.linalg.norm(tl - bl)
+
+    maxW = int(math.ceil(max(widthA, widthB) * scale * (1.0 + margin_ratio)))
+    maxH = int(math.ceil(max(heightA, heightB) * scale * (1.0 + margin_ratio)))
+    maxW = max(maxW, 10)
+    maxH = max(maxH, 10)
+    
+    dst = np.array([
+        [margin, margin],
+        [maxW - margin - 1, margin],
+        [maxW - margin - 1, maxH - margin - 1],
+        [margin, maxH - margin - 1]
+    ], dtype=np.float32)
+
+    img_bgr = cv2.imread(path_to_img)
+    M = cv2.getPerspectiveTransform(quad_pts, dst)
+    warped = cv2.warpPerspective(img_bgr, M, (maxW, maxH))
+    h, w = warped.shape[:2]
+    size = max(h, w)
+    square_img = cv2.resize(warped, (size, size))
+    return warped
+
+#draw_pieces_boxes(create_file_path(0, 1))
+main(create_file_path(92, 2))
+#detect_and_crop(r"C:\Users\tomer\chess_recognition\Screenshot 2025-09-05 200342.png")
