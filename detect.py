@@ -7,6 +7,8 @@ import torch
 from collections import defaultdict
 model = YOLO(r"runs/detect/train5/weights/best.pt")
 pieces_model = YOLO(r"runs2/detect/train2/weights/best.pt")
+
+
 def create_file_path(img_num, folder_num):
     if img_num<10:
         str_i = "00"+str(img_num)
@@ -26,7 +28,6 @@ def create_file_path(img_num, folder_num):
 
 def create_folder_path(folder_num):
     return r"images\\"+str(folder_num)
-
 
 def mid_point_of_boxes(coords):
     new_coords = []
@@ -212,8 +213,8 @@ def main(path_to_img):
     img = cv2.imread(path_to_img)
     cropped_img, (bl_y, bl_x), cropped_shape = crop_rectangle(path_to_img, corners, margin=140)
     pieces_coords, pieces_conf = detect_pieces(cropped_img)
-    cls_to_piece_type = {0: "black bishop", 1: "black king", 2: "black knight", 3: "black pawn", 4: "black queen", 5: "black rook",
-                     6: "white bishop", 7: "white king", 8: "white knight", 9: "white pawn", 10: "white queen", 11: "white rook"}
+    cls_to_piece_type = {0: "black-bishop", 1: "black-king", 2: "black-knight", 3: "black-pawn", 4: "black-queen", 5: "black-rook",
+                     6: "white-bishop", 7: "white-king", 8: "white-knight", 9: "white-pawn", 10: "white-queen", 11: "white-rook"}
     num_to_file = {0:"a", 1:"b", 2:"c", 3: "d", 4: "e", 5: "f", 6: "g",7: "h"}
     square_to_piece = defaultdict(list) # multi values dictionary
     square_to_piece_final = {}
@@ -232,176 +233,9 @@ def main(path_to_img):
             if current_conf > max_conf:
                 max_conf = current_conf
                 piece_with_max_conf = piece
-        square_to_piece_final[square] = piece_with_max_conf
-    for square, piece in square_to_piece_final.items():
-        piece_type = cls_to_piece_type[piece[0]]
-        print(f"{piece_type} on {num_to_file[square[0]]}{8-square[1]}")
+        square_str = num_to_file[square[0]]+str(8-square[1])
+        square_to_piece_final[square_str] = cls_to_piece_type[piece_with_max_conf[0]]
+    return square_to_piece_final
         
-
-
-def detect_and_crop(path_to_img):
-    corners, ones, eights = detect_corners_and_orientation(path_to_img)
-    warped = warp_quad(path_to_img, corners, ones, eights)
-    cv2.namedWindow("Board", cv2.WINDOW_NORMAL)  # or: cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO
-    cv2.imshow("Board", warped)
-
-    cv2.resizeWindow("Board", 800, 800)
-
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-
-
-def draw_corners(path_to_img, corners, ones, eights):
-    img = cv2.imread(path_to_img)
-    for i in range(4):
-        cv2.putText(img, str(i), (int(corners[i][0]), int(corners[i][1])), 
-        cv2.FONT_HERSHEY_SIMPLEX, 4, (255, 0, 0), 2)   
-    for eight in eights:
-        cv2.circle(img, eight, 15, (0, 255, 0), -1)
-    for one in ones:    
-        cv2.circle(img, one, 15, (0, 0, 255), -1)
-    return img
-
-
-def draw_corners_from_path(path_to_img):
-    corners, ones, eights = detect_corners_and_orientation(path_to_img)
-    corners = order_corners(corners, ones, eights)
-    img = draw_corners(path_to_img, corners, ones, eights)
-    cv2.namedWindow("Board", cv2.WINDOW_NORMAL)  
-    cv2.imshow("Board", img)
-
-    cv2.resizeWindow("Board", 800, 800)
-
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-
-
-def draw_pieces_boxes(path_to_img):
-    corners, ones, eights = detect_corners_and_orientation(path_to_img)
-    corners = order_corners(corners, ones, eights)
-    img, (bl_y, bl_x), cropped_shape = crop_rectangle(path_to_img, corners)
-    pieces_coords = detect_pieces(img)
-    for i in range(12):
-        for piece_coord in pieces_coords[i]:
-            x1, y1, x2, y2 = piece_coord
-            cv2.rectangle(img=img, pt1=(int(x1), int(y2)), pt2=(int(x2), int(y1)), color = (255, 0, 0), thickness=-1)
-    cv2.namedWindow("Board", cv2.WINDOW_NORMAL)  
-    cv2.imshow("Board", img)
-
-    cv2.resizeWindow("Board", 800, 800)
-
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-
-
-def draw_origin_point(path_to_img):
-    img = cv2.imread(path_to_img)
-    corners, ones, eights = detect_corners_and_orientation(path_to_img)
-    corners = order_corners(corners, ones, eights)
-    cropped_img, (bl_y, bl_x), cropped_shape = crop_rectangle(path_to_img, corners)
-    pieces_coords = detect_pieces(cropped_img)
-    for i in range(12):
-        for piece_coord in pieces_coords[i]:
-            x1, y1, x2, y2 = piece_coord
-            base_midpoint = [y2, (x1+x2) // 2]
-            origin_point = get_origin_point(base_midpoint, img.shape, bl_y, bl_x, cropped_shape)
-            cv2.circle(img=img, center= (int(origin_point[0]), int(origin_point[1])), radius = 15, color = (255, 0, 0), thickness=-1)
-    cv2.namedWindow("Board", cv2.WINDOW_NORMAL)  
-    cv2.imshow("Board", img)
-
-    cv2.resizeWindow("Board", 800, 800)
-
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-
-
-def draw_warped_point(path_to_img):
-    img = cv2.imread(path_to_img)
-    corners, ones, eights = detect_corners_and_orientation(path_to_img)
-    corners = order_corners(corners, ones, eights)
-    cropped_img, (bl_y, bl_x), cropped_shape = crop_rectangle(path_to_img, corners)
-    pieces_coords = detect_pieces(cropped_img)
-    warped = warp_quad(path_to_img, corners, ones, eights)
-    for i in range(12):
-        for piece_coord in pieces_coords[i]:
-            x1, y1, x2, y2 = piece_coord
-            base_midpoint = [y2, (x1+x2) // 2]
-            origin_point = get_origin_point(base_midpoint, img.shape, bl_y, bl_x, cropped_shape)
-            warped_point = get_point_in_board(origin_point, img.shape, corners)
-            cv2.circle(img=warped, center= (int(warped_point[0]), int(warped_point[1])), radius = 15, color = (255, 0, 0), thickness=-1)
-    cv2.namedWindow("Board", cv2.WINDOW_NORMAL)  
-    cv2.imshow("Board", warped)
-
-    cv2.resizeWindow("Board", 800, 800)
-
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-
-
-def save_warped_files(folder_num, folder_name):
-    os.makedirs(folder_name, exist_ok = True)
-    folder_path = create_folder_path(folder_num)
-    files = os.listdir(folder_path)
-    for i in range(len(files)):
-        path_to_img = create_file_path(i, folder_num)
-        corners, ones, eights = detect_corners_and_orientation(path_to_img)
-        if len(corners)>=4:
-            warped = warp_quad(path_to_img, corners, ones, eights, margin=210)
-            save_dir = os.path.join(folder_name, str(folder_num))
-            os.makedirs(save_dir, exist_ok = True)
-            saved_img_path = os.path.join(save_dir, f"{i}.png")
-            cv2.imwrite(saved_img_path, warped)
-            
-
-def save_cropped_files(folder_num, folder_name):
-    os.makedirs(folder_name, exist_ok = True)
-    folder_path = create_folder_path(folder_num)
-    files = os.listdir(folder_path)
-    for i in range(len(files)):
-        path_to_img = create_file_path(i, folder_num)
-        corners, ones, eights = detect_corners_and_orientation(path_to_img)
-        if len(corners)>=4:
-            cropped, (min_y, min_x), cropped_shape = crop_rectangle(path_to_img, corners, margin = 140)
-            save_dir = os.path.join(folder_name, str(folder_num))
-            os.makedirs(save_dir, exist_ok = True)
-            saved_img_path = os.path.join(save_dir, f"{i}.png")
-            cv2.imwrite(saved_img_path, cropped)
-        
-
-def warp_quad(path_to_img, quad_pts, ones, eights, scale=1.0, margin_ratio=0, margin=0):
-    """
-    Perspective-warp the quad to a top-down rectangle.
-    Output size inferred from the quad side lengths, with optional margin.
-    Returns warped
-    """
-    #ordered = order_corners(quad_pts, ones, eights)
-    (tl, tr, br, bl) = quad_pts
-
-    widthA = np.linalg.norm(br - bl)
-    widthB = np.linalg.norm(tr - tl)
-    heightA = np.linalg.norm(tr - br)
-    heightB = np.linalg.norm(tl - bl)
-
-    maxW = int(math.ceil(max(widthA, widthB) * scale * (1.0 + margin_ratio)))
-    maxH = int(math.ceil(max(heightA, heightB) * scale * (1.0 + margin_ratio)))
-    maxW = max(maxW, 10)
-    maxH = max(maxH, 10)
-    
-    dst = np.array([
-        [margin, margin],
-        [maxW - margin - 1, margin],
-        [maxW - margin - 1, maxH - margin - 1],
-        [margin, maxH - margin - 1]
-    ], dtype=np.float32)
-
-    img_bgr = cv2.imread(path_to_img)
-    M = cv2.getPerspectiveTransform(quad_pts, dst)
-    warped = cv2.warpPerspective(img_bgr, M, (maxW, maxH))
-    h, w = warped.shape[:2]
-    size = max(h, w)
-    square_img = cv2.resize(warped, (size, size))
-    return warped
-
-#draw_pieces_boxes(create_file_path(0, 1))
-main(create_file_path(92, 2))
-#detect_and_crop(r"C:\Users\tomer\chess_recognition\Screenshot 2025-09-05 200342.png")
+img_path = create_file_path(0, 0)
+print(img_path)
